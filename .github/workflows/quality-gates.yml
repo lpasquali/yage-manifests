@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [init]
+  push:
+    branches: [init]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  security:
+    name: RuneGate/Security/SecretScanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          VERSION="8.24.3"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: Scan for secrets (PR delta)
+        if: github.event_name == 'pull_request'
+        run: |
+          gitleaks git \
+            --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" \
+            --exit-code 1
+      - name: Scan for secrets (push delta)
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: |
+          gitleaks git \
+            --log-opts="${{ github.event.before }}..${{ github.sha }}" \
+            --exit-code 1
+      - name: Scan full history (new branch / initial push)
+        if: github.event_name == 'push' && github.event.before == '0000000000000000000000000000000000000000'
+        run: gitleaks git --exit-code 1
+
+  yaml-quality:
+    name: RuneGate/Quality/Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check for empty template files
+        run: |
+          find . -name '*.yaml.tmpl' -empty | grep . && { echo "::error::empty template files found"; exit 1; } || echo "no empty templates"
+      - name: Check for unclosed template actions
+        run: |
+          ! grep -rn '{{[^}]*$' --include='*.yaml.tmpl' . || { echo "::error::unclosed template action found"; exit 1; }
+
+  merge-gate:
+    name: Merge Gate
+    needs: [security, yaml-quality]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate upstream results
+        run: |
+          set -euo pipefail
+          ok() { case "$1" in success|skipped) return 0 ;; *) return 1 ;; esac }
+          echo "security:     ${{ needs.security.result }}"
+          echo "yaml-quality: ${{ needs.yaml-quality.result }}"
+          ok "${{ needs.security.result }}"    || { echo "::error::security check failed"; exit 1; }
+          ok "${{ needs.yaml-quality.result }}" || { echo "::error::yaml-quality check failed"; exit 1; }
+          echo "Merge Gate Satisfied"
