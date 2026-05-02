@@ -29,7 +29,9 @@ go run github.com/lpasquali/yage/tools/render-template \
 
 ## Versioning
 
-Tagged with semver (`v0.1.0`, `v0.2.0`, …). Breaking template changes bump the minor version until v1.0.0. yage pins via `YAGE_MANIFESTS_REF`.
+Tagged with semver (`v0.2.0`, `v0.3.0`, …). Breaking template changes bump the minor version until v1.0.0. yage pins via `YAGE_MANIFESTS_REF`.
+
+**`v0.1.0` is empty and deprecated.** It tagged the initial scaffold commit (`c0a693e`) which contained only directory structure and READMEs — no `.yaml.tmpl` files. Any deployment using `YAGE_MANIFESTS_REF=v0.1.0` will fail at template render time. Use `>=v0.2.0`.
 
 ## Contributing
 
