@@ -51,7 +51,20 @@ jobs:
           find . -name '*.yaml.tmpl' -empty | grep . && { echo "::error::empty template files found"; exit 1; } || echo "no empty templates"
       - name: Check for unclosed template actions
         run: |
-          ! grep -rn '{{[^}]*$' --include='*.yaml.tmpl' . || { echo "::error::unclosed template action found"; exit 1; }
+          set -euo pipefail
+          # Catch lines with `{{` that have no closing `}}` on the same line (a
+          # true unclosed action), while ignoring lines that only open a
+          # multi-line Go-template comment block: `{{- /*` or `{{ /*` (these
+          # close on a later line with `*/ -}}` and are valid).
+          matches=$(grep -rnE '\{\{[^}]*$' --include='*.yaml.tmpl' . \
+            | grep -vE ':[0-9]+:[[:space:]]*\{\{-?[[:space:]]*/\*[[:space:]]*$' \
+            || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo "::error::unclosed template action found"
+            exit 1
+          fi
+          echo "no unclosed template actions"
 
   merge-gate:
     name: Merge Gate
